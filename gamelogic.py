@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+
 from random import shuffle
 
 
@@ -6,13 +9,13 @@ class Game:
     def __init__(self, playername, decks):
         # Below line is used primarily for results output, but can be expanded later for saving games.
         self.currentround = 1   # Starting off the game in round 1.
-        self.player = Player(playername)  # Initializes the player, and gives them a name.
-        self.dealer = Player()  # Initializes the dealer.
+        self.player = Player(playername)
+        self.dealer = Player("Dealer")
         self.deck = Deck(decks)  # Initializes the decks, taking 'decks' as the number of decks to use.
         self.allplayers = [self.dealer, self.player]  # Sets up a list of players to be able to iterate through them.
         self.over = False  # Sets whether or not the game is over.
 
-    def new_round(self, player_bet):
+    def new_round(self):
         # In a real game the deck wouldn't be shuffled every round. However, introducing shuffling only occasionally
         # introduces more complexity than will be noticeable in the game.
         self.deck.shuffle()
@@ -21,24 +24,29 @@ class Game:
             for x in range(2):
                 newcard = self.deck.deal_card()
                 player.hands[0].cards.append(newcard)
-        self.player.place_bet(player_bet)
-        if __name__ == '__main__':   # For console testing/printing, prints what's in hands.
-            hand = self.player.hands[0]
-            print(self.player.look_at_hand())  # Printing the player's hand.
-            print("\nDealer has the", self.dealer.hands[0].cards[1])
-            if hand.blackjack:
-                print("Blackjack!")
+                if x == 1:
+                    player.hands[0].calculate_value()
+
+    def player_actions(self, action="stand", hand_held=0):
+        hand = self.player.hands[hand_held]
+        if action == "hit" or action == "double":
+            hand.cards.append(self.deck.deal_card())
+            hand.calculate_value()
+        if action == "double":
+            self.player.bet = self.player.bet*2
+            if __name__ == '__main__':
+                print(self.player.bet)
+        hand.actions_taken.append(action)
 
 
 class Player:
 
-    def __init__(self, name=None):
-        if not name:
-            name = 'Dealer'
+    def __init__(self, name, bank=50):
         self.name = name
         self.bet = 0
         self.hands = []
-        self.bank = 50
+        self.bank = bank
+        self.hand_held = 0
 
     def place_bet(self, player_bet):
         self.bet = player_bet
@@ -47,16 +55,19 @@ class Player:
         return self.name
 
     def look_at_hand(self, hand_held=0):
-        # Prints the hands for unit testing; else, returns the cards in hand (for eventual UI)
+        # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
         if __name__ == '__main__':
-            handname = "Your hand: " if len(self.hands) < 2 else "Hand " + str(hand_held + 1)
-            return "\n" + handname + "\n" + "\n".join(map(str, self.hands[hand_held].cards[:]))
+            hand_name = "Your hand: " if len(self.hands) < 2 else "Hand " + str(hand_held + 1)
+            hand_value = " " + str(self.hands[hand_held].value) + "\n"
+            return "\n" + hand_name + hand_value + "\n".join(map(str, self.hands[hand_held].cards[:]))
 
         else:
             return self.hands[hand_held].cards[:]
 
 
 class Hand:
+    """This holds values of the current cards. This will be deleted once a round is wrapped up and instantiated again
+    when the round begins."""
 
     def __init__(self):
         self.cards = []
@@ -66,6 +77,7 @@ class Hand:
         self.bust = False  # Makes the hand bust if its value is over 21
         self.pair = False
         self.blackjack = False
+        self.actions_taken = []  # The number of actions the hand has done in a round.
 
     def calculate_value(self):
         self.value = sum([cards.value for cards in self.cards])
@@ -121,10 +133,13 @@ class Card:
         return "%s of %s" % (Card.ranks[self.rank], Card.suits[self.suit])
 
 
-if __name__ == '__main__':
+def playgame():
+    """This function should only be run when playing this from the command line. Replace game with variables once out of
+    testing and ready for command line release"""
     game = Game('Bob', 2)
     while not game.over:
         print("Round ", game.currentround)  # Printing the round beginning.
+        game.new_round()
         while True:  # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
             try:
                 bet = int(input("Place your bet. Cannot exceed " + str(game.player.bank) + ".  "))
@@ -136,5 +151,14 @@ if __name__ == '__main__':
                 continue
             else:
                 break
-        game.new_round(bet)
-        break
+        game.player.place_bet(bet)
+        print("\nDealer has the", game.dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
+        print(game.player.look_at_hand())
+        game.player_actions()
+        print(game.player.look_at_hand())
+        print(game.player.hands[0].actions_taken)
+        break  # Delete this line when game.over is implemented correctly
+
+
+if __name__ == '__main__':
+    playgame()
