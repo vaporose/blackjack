@@ -27,11 +27,12 @@ class Game:
                 if x == 1:
                     player.hands[0].calculate_value()
 
-    def player_actions(self, action="stand", hand_held=0):
-        hand = self.player.hands[hand_held]
+    def player_actions(self, hand, action="stand"):
         if action == "hit" or action == "double":
             hand.cards.append(self.deck.deal_card())
             hand.calculate_value()
+            if hand.bust:
+                hand.actions_taken.append("stand")
         if action == "double":
             self.player.bet = self.player.bet*2
             if __name__ == '__main__':
@@ -55,21 +56,23 @@ class Player:
         return self.name
 
     def look_at_hand(self, hand_held=0):
+        hand = self.hands[hand_held]
         # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
         if __name__ == '__main__':
-            hand_name = "Your hand: " if len(self.hands) < 2 else "Hand " + str(hand_held + 1)
+            hand_name = "Your hand: " if len(self.hands) < 2 else hand.name + ": "
             hand_value = " " + str(self.hands[hand_held].value) + "\n"
-            return "\n" + hand_name + hand_value + "\n".join(map(str, self.hands[hand_held].cards[:]))
+            return "\n" + hand_name + hand_value + "\n".join(map(str, hand.cards[:]))
 
         else:
-            return self.hands[hand_held].cards[:]
+            return hand.cards[:]
 
 
 class Hand:
     """This holds values of the current cards. This will be deleted once a round is wrapped up and instantiated again
     when the round begins."""
 
-    def __init__(self):
+    def __init__(self, name=1):
+        self.name = "hand " + str("one" if name == 1 else "two")  # Will only work with two-max split. Not scalable.
         self.cards = []
         self.value = sum([cards.value for cards in self.cards])
         if any(cards.rank == 1 for cards in self.cards) and self.value + 10 <= 21:
@@ -92,6 +95,12 @@ class Hand:
             if self.cards[0].value == self.cards[1].value:
                 self.pair = True
         return self.value
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return self.name
 
 
 class Deck:
@@ -133,32 +142,74 @@ class Card:
         return "%s of %s" % (Card.ranks[self.rank], Card.suits[self.suit])
 
 
-def playgame():
+def play_game():
     """This function should only be run when playing this from the command line. Replace game with variables once out of
     testing and ready for command line release"""
     game = Game('Bob', 2)
-    while not game.over:
+    player = game.player
+    while True:
         print("Round ", game.currentround)  # Printing the round beginning.
         game.new_round()
-        while True:  # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
-            try:
-                bet = int(input("Place your bet. Cannot exceed " + str(game.player.bank) + ".  "))
-            except ValueError:
-                print("Bet must be a number!")
-                continue
-            if bet > game.player.bank:
-                print("Can't bet more than you have!")
-                continue
-            else:
-                break
-        game.player.place_bet(bet)
+        current_hand = player.hands[player.hand_held]
+        player.place_bet(get_bet(player.bank))
         print("\nDealer has the", game.dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
-        print(game.player.look_at_hand())
-        game.player_actions()
-        print(game.player.look_at_hand())
-        print(game.player.hands[0].actions_taken)
-        break  # Delete this line when game.over is implemented correctly
+        print(player.look_at_hand(), "\n")
+        while "stand" not in current_hand.actions_taken:
+            action = get_action(current_hand)
+            if action == "switch":
+                if len(player.hands) < 2:
+                    print("You only have one hand!")
+                elif player.hand_held == 0:
+                        player.hand_held = 1
+                else:
+                    player.hand_held = 0
+            game.player_actions(current_hand, action)
+        break  # Delete this line when round over is implemented correctly
+
+
+def get_bet(bank):
+    while True:  # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
+        entered_bet = input("Place your bet, max " + str(bank) + ":  (Press Q to quit)")
+        quit_game(entered_bet)
+        try:
+            bet = int(entered_bet)
+        except ValueError:
+            print("Bet must be a number!")
+            continue
+        if bet > bank:
+            print("Can't bet more than you have!")
+            continue
+        else:
+            break
+    return bet
+
+
+def get_action(hand):
+    possible_actions = ["stand", "hit"]
+    if hand.pair:
+        possible_actions.append("split")
+    if "double" not in hand.actions_taken:
+        possible_actions.append("double")
+    print("You are holding " + hand.name + ". Choose an action or press 'S' to switch hands, 'Q' to quit.\n")
+    for option in possible_actions:
+        print(possible_actions.index(option), ")", option.title())
+    action = None
+    try:
+        selected_action = input("\nEnter 0-" + str(len(possible_actions)-1) + ": ")
+        quit_game(selected_action)
+        if selected_action == 'S' or selected_action == 's':
+            return "switch"
+        action = possible_actions[int(selected_action)]
+    except IndexError:
+        print("Not an option. Please try again.")
+    hand.actions_taken.append(action)
+    return action
+
+
+def quit_game(got_key):
+    if got_key == "q" or got_key == "Q":
+        quit(0)
 
 
 if __name__ == '__main__':
-    playgame()
+    play_game()
