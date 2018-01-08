@@ -35,9 +35,27 @@ class Game:
                 hand.actions_taken.append("stand")
         if action == "double":
             self.player.bet = self.player.bet*2
+            hand.actions_taken.append(action)
             if __name__ == '__main__':
                 print(self.player.bet)
-        hand.actions_taken.append(action)
+        if action == "split":
+            # Giving a new hand, splitting the cards from the old hand and dealing a new card to each
+            self.player.hands.append(Hand(2))
+            self.player.hands[1].cards.append(hand.cards[-1])
+            hand.cards.pop(-1)
+            for hands in self.player.hands:
+                hands.cards.append(self.deck.deal_card())
+                hands.calculate_value()
+            hand.actions_taken.append(action)
+        if action == "stand":
+            hand.actions_taken.append(action)
+
+    def player_done(self):
+        # Check if each hand is stood
+        if all(hand.check_actions("stand") for hand in self.player.hands):
+            return True
+        else:
+            return False
 
 
 class Player:
@@ -55,16 +73,21 @@ class Player:
     def __str__(self):
         return self.name
 
-    def look_at_hand(self, hand_held=0):
-        hand = self.hands[hand_held]
+    def look_at_hand(self, hand):
         # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
         if __name__ == '__main__':
-            hand_name = "Your hand: " if len(self.hands) < 2 else hand.name + ": "
-            hand_value = " " + str(self.hands[hand_held].value) + "\n"
-            return "\n" + hand_name + hand_value + "\n".join(map(str, hand.cards[:]))
+            hand_name = "Your hand: " if len(self.hands) < 2 else "Hand " + str(hand.name) + ": "
+            hand_value = " " + str(hand.value) + "\n"
+            return "\n" + str(hand_name) + hand_value + "\n".join(map(str, hand.cards[:]))
 
         else:
             return hand.cards[:]
+
+    def switch_hands(self):
+        if self.hand_held == 0:
+            self.hand_held = 1
+        else:
+            self.hand_held = 0
 
 
 class Hand:
@@ -72,7 +95,7 @@ class Hand:
     when the round begins."""
 
     def __init__(self, name=1):
-        self.name = "hand " + str("one" if name == 1 else "two")  # Will only work with two-max split. Not scalable.
+        self.name = name
         self.cards = []
         self.value = sum([cards.value for cards in self.cards])
         if any(cards.rank == 1 for cards in self.cards) and self.value + 10 <= 21:
@@ -80,7 +103,7 @@ class Hand:
         self.bust = False  # Makes the hand bust if its value is over 21
         self.pair = False
         self.blackjack = False
-        self.actions_taken = []  # The number of actions the hand has done in a round.
+        self.actions_taken = []
 
     def calculate_value(self):
         self.value = sum([cards.value for cards in self.cards])
@@ -96,11 +119,21 @@ class Hand:
                 self.pair = True
         return self.value
 
+    def check_actions(self, action=None):
+        # Returns the length of actions_taken if no action is passed to it.
+        if not action:
+            return len(self.actions_taken)
+        else:
+            if action in self.actions_taken:
+                return True
+            else:
+                return False
+
     def __repr__(self):
         return self.__str__()
 
     def __str__(self):
-        return self.name
+        return "Hand" + str(self.name).title()
 
 
 class Deck:
@@ -135,7 +168,7 @@ class Card:
 
     def __repr__(self):
         return self.__str__()
-        # Insures that when printing a card, the card is printed as a string and not an object. See __str__ below.
+        # Insures that when printing a card, the card is printed as a string and not an object reference. See __str__
 
     def __str__(self):
         # Whenever this object is printed, print the card name.
@@ -146,25 +179,28 @@ def play_game():
     """This function should only be run when playing this from the command line. Replace game with variables once out of
     testing and ready for command line release"""
     game = Game('Bob', 2)
-    player = game.player
+    player = game.player  # Going to be using this variable a lot, typing "game" is annoying.
     while True:
         print("Round ", game.currentround)  # Printing the round beginning.
         game.new_round()
-        current_hand = player.hands[player.hand_held]
-        player.place_bet(get_bet(player.bank))
-        print("\nDealer has the", game.dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
-        print(player.look_at_hand(), "\n")
-        while "stand" not in current_hand.actions_taken:
+        #player.place_bet(get_bet(player.bank))
+        #print("\nDealer has the", game.dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
+        while True:
+            # Until you Stand or go bust (see player_actions), you will be prompted to take action.
+            current_hand = player.hands[player.hand_held]
+            print(player.look_at_hand(current_hand), "\n")
             action = get_action(current_hand)
-            if action == "switch":
-                if len(player.hands) < 2:
-                    print("You only have one hand!")
-                elif player.hand_held == 0:
-                        player.hand_held = 1
+            if action == "switch":  # Allows player to switch hands, assuming they have previously split hands.
+                player.switch_hands()
+            else:
+                game.player_actions(current_hand, action)
+                print(player.look_at_hand(current_hand), "\n")
+            if current_hand.check_actions("stand"):
+                if game.player_done():
+                    break  # If all hands are stood, then exit loop.
                 else:
-                    player.hand_held = 0
-            game.player_actions(current_hand, action)
-        break  # Delete this line when round over is implemented correctly
+                    player.switch_hands()
+        break
 
 
 def get_bet(bank):
@@ -185,12 +221,13 @@ def get_bet(bank):
 
 
 def get_action(hand):
+    # This is retrieving an action from the player (text only).
     possible_actions = ["stand", "hit"]
-    if hand.pair:
-        possible_actions.append("split")
-    if "double" not in hand.actions_taken:
+    if not hand.check_actions("double"):  # Add "double" if this hand has not already doubled
         possible_actions.append("double")
-    print("You are holding " + hand.name + ". Choose an action or press 'S' to switch hands, 'Q' to quit.\n")
+    if not hand.check_actions("split") and hand.name == 1:  # Reimplement "and hand.pair:" when done testing splits
+        possible_actions.append("split")
+    print("You are holding hand " + str(hand.name) + ". Choose an action or press 'S' to switch hands, 'Q' to quit.\n")
     for option in possible_actions:
         print(possible_actions.index(option), ")", option.title())
     action = None
@@ -207,6 +244,7 @@ def get_action(hand):
 
 
 def quit_game(got_key):
+    # Quit function. This will probably be removed once we go to a GUI.
     if got_key == "q" or got_key == "Q":
         quit(0)
 
