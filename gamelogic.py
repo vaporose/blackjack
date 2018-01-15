@@ -55,6 +55,19 @@ class Game:
         else:
             return False
 
+    def check_winner(self):
+        # This goes through all players except the dealer to see if they win.
+        # Doing it this way to render this expandable for multiple players, even though only one is implemented so far.
+        win_values = {0: "lose", 1: "win", 2: "push"}
+        win_messages = []
+        # Check if the player has won or not
+        for player in self.allplayers[1:]:
+            result = player.check_winner(self.dealer.hands[0])
+            win_messages.append(win_values[result])
+            if result == 1:
+                player.bank += player.bet  # TODO: Update this when player.place_bet updated
+        return win_messages
+
     def end_round(self):
         pass
 
@@ -69,20 +82,17 @@ class Player:
         self.hand_held = 0  # This is used to determine which hand the player is looking at, after splitting
 
     def place_bet(self, player_bet):
-        self.bet = player_bet
+        self.bet = player_bet  # Todo: Fix this to remove from bank and combine with double_check
 
     def __str__(self):
         return self.name
 
     def look_at_hand(self, hand):
+        # TODO: Evaluate -- do I need this method?
         # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
-        if __name__ == '__main__':  # Get rid of this mess later
-            if self.name == "Dealer":
-                hand_name = self.name.title() + "'s hand: "
-            else:
-                hand_name = "Your hand: " if len(self.hands) < 2 else "Hand " + str(hand.name) + ": "
-            hand_value = " " + str(hand.value) + "\n"
-            return "\n" + hand_name + hand_value + "\n".join(map(str, hand.cards[:]))
+        if __name__ == '__main__':
+            hand_value = "\nValue: " + str(hand.value) + "\n"
+            return hand_value + "\n".join(map(str, hand.cards[:]))
 
         else:
             return hand.cards[:]
@@ -99,6 +109,24 @@ class Player:
             return True
         else:
             return False
+
+    def check_winner(self, dealer):
+        # Takes the dealer's hand as input
+        # 0 == Loss
+        # 1 == Win
+        # 2 == Push (loss, but used separately for recording/printing values).
+        winning_hand = None
+        for hand in self.hands:
+            if not hand.bust and hand.value == max(hands.value for hands in self.hands):
+                winning_hand = hand
+        if not winning_hand:
+            return 0  # If winning_hand isn't set, all hands were bust. Therefore, loss.
+        elif dealer.bust or winning_hand.value > dealer.value:
+            return 1  # If the dealer went bust or if player hand is higher than the dealer's hand, win.
+        elif dealer.value == winning_hand.value:
+            return 2  # Player pushes if neither went bust and player didn't win
+        else:
+            return 0  # All other permutations result in the player losing their bet and not pushing.
 
 
 class Hand:
@@ -184,17 +212,22 @@ class Card:
 
 
 def play_game():
-    """This function should only be run when playing this from the command line. Replace game with variables once out of
-    testing and ready for command line release"""
+    """This function should only be run when playing this from the command line."""
+    # TODO: Replace game with variables once out oftesting and ready for command line release
     game = Game('Bob', 2)
     while True:
         print("Round ", game.currentround)  # Printing the round beginning.
         game.new_round()
+        dealer = game.dealer.hands[0]  # Simplify dealer's hand for readability
         game.player.place_bet(get_bet(game.player.bank))
-        print("\nDealer has the", game.dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
+        print("\nDealer has the", dealer.cards[1], "showing.")  # Prints the dealer's face-up card
         play_hands(game, game.player)
-        dealer_actions(game, game.dealer, game.dealer.hands[0])
-        break
+        dealer_actions(game, game.dealer, dealer)
+        print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", game.player.bank)
+        if input("Press Y to continue or anything else to quit.") in ("y","Y"):
+            continue
+        else:
+            quit(0)
 
 
 def play_hands(game, player):
@@ -217,10 +250,11 @@ def play_hands(game, player):
 
 
 def dealer_actions(game, player, hand):
-    print("Dealer reveals:\n", player.look_at_hand(hand))
+    spacer = "\n" + "*"*30 + "\n"
+    print(spacer + "Dealer reveals:\n", player.look_at_hand(hand))
     while hand.value < 16:
         game.player_actions(hand, "hit")
-    print(player.look_at_hand(hand))
+    print("\nDealer's final hand: ", player.look_at_hand(hand), spacer)
 
 
 def get_bet(bank):
@@ -245,7 +279,7 @@ def get_action(player, hand):
     possible_actions = ["stand", "hit"]
     if not hand.check_actions("double") and player.double_check():
         possible_actions.append("double")
-    if not hand.check_actions("split") and hand.name == 1:  # Re-implement "and hand.pair:" when done testing splits
+    if not hand.check_actions("split") and hand.name == 1:  # Todo: Re-implement "and hand.pair:"
         possible_actions.append("split")
     print("You are holding hand " + str(hand.name) + ". Choose an action or press 'S' to switch hands, 'Q' to quit.\n")
     for option in possible_actions:
