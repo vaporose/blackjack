@@ -85,6 +85,7 @@ class Game:
         # todo: Extend with end of game logging
         self.over = True
 
+
 class Player:
 
     def __init__(self, name, bank=50):
@@ -94,35 +95,33 @@ class Player:
         self.bank = bank  # The amount of money they start with. Eventually "bank" should be adjustable per-game.
         self.hand_held = 0  # This is used to determine which hand the player is looking at, after splitting
 
-    def place_bet(self, player_bet):
-        self.bet = player_bet
-        self.bank -= player_bet
+    def place_bet(self, player_bet, validate=False):
+        try:
+            bet = int(player_bet)
+            if bet <= 0 or bet > self.bank:
+                raise ValueError
+        except ValueError:
+            print("ERROR: Invalid bet: ", player_bet, "Bet must be a number between 1 and" + str(self.bank))
+            return False
+        except TypeError:
+            print("ERROR: Invalid bet:", player_bet, "Bet must be an integer.")
+            return False
+        else:
+            if not validate:
+                self.bet = bet
+                self.bank -= bet
+                return True
+            else:
+                return True
 
     def __str__(self):
         return self.name
-
-    def look_at_hand(self, hand):
-        # TODO: Evaluate -- do I need this method?
-        # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
-        if __name__ == '__main__':
-            hand_value = "\nValue: " + str(hand.value) + "\n"
-            return hand_value + "\n".join(map(str, hand.cards[:]))
-
-        else:
-            return hand.cards[:]
 
     def switch_hands(self):  # Pick up a different hand (when hands are split)
         if self.hand_held == 0:
             self.hand_held = 1
         else:
             self.hand_held = 0
-
-    def double_check(self):
-        # This will do nothing but check whether or not a double is legal
-        if self.bet * 2 <= self.bank:
-            return True
-        else:
-            return False
 
     def check_winner(self, dealer):
         # Takes the dealer's hand as input
@@ -229,19 +228,21 @@ class Card:
         # Whenever this object is printed, print the card name.
         return "%s of %s" % (Card.ranks[self.rank], Card.suits[self.suit])
 
+# Text-only functions (will not work with GUI)
 
-def play_game():
+
+def play_game(playername, decks):
     """This function should only be run when playing this from the command line."""
     # TODO: Replace game with variables once out oftesting and ready for command line release
-    game = Game('Bob', 2)
+    game = Game(playername, decks)
     while True:
         print("Round ", game.currentround)  # Printing the round beginning.
         game.new_round()
         dealer = game.dealer.hands[0]  # Simplify dealer's hand for readability
-        game.player.place_bet(get_bet(game.player.bank))
+        get_bet(game.player)
         print("\nDealer has the", dealer.cards[1], "showing.")  # Prints the dealer's face-up card
         play_hands(game, game.player)
-        dealer_actions(game, game.dealer, dealer)
+        dealer_actions(game, dealer)
         print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", game.player.bank)
         if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
             quit(0)
@@ -254,14 +255,14 @@ def play_game():
 def play_hands(game, player):
     # Until you Stand or go bust (see player_actions), you will be prompted to take action.
     current_hand = player.hands[player.hand_held]  # Simplifying accessing the current hand as an object and not int
-    print(player.look_at_hand(current_hand), "\n")
+    print(look_at_hand(current_hand), "\n")
     action = get_action(player, current_hand)  # Gets from the player what they want to do with the held hand
     if action == "switch":  # Allows player to switch hands, assuming they have previously split hands.
         player.switch_hands()
-        print(player.look_at_hand(current_hand), "\n")
+        print(look_at_hand(current_hand), "\n")
     else:
         game.player_actions(current_hand, action)  # Does the specified action, if it wasn't "switch" or quit.
-        print(player.look_at_hand(current_hand), "\n")
+        print(look_at_hand(current_hand), "\n")
     if current_hand.check_actions("stand"):  # If they stood, then the hand is maybe over...
         if not game.player_done():  # ... unless not ALL hands have been stood. In which case, switch to other hand.
             player.switch_hands()
@@ -270,39 +271,37 @@ def play_hands(game, player):
     play_hands(game, player)  # If we haven't stood yet, then continue prompting for action on this hand.
 
 
-def dealer_actions(game, player, hand):
+def look_at_hand(hand):
+    # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
+    hand_value = "\nValue: " + str(hand.value) + "\n"
+    return hand_value + "\n".join(map(str, hand.cards[:]))
+
+
+def dealer_actions(game, hand):
     spacer = "\n" + "*"*30 + "\n"
-    print(spacer + "Dealer reveals:\n", player.look_at_hand(hand))
+    print(spacer + "Dealer reveals:\n", look_at_hand(hand))
     while hand.value < 16:
         game.player_actions(hand, "hit")
-    print("\nDealer's final hand: ", player.look_at_hand(hand), spacer)
+    print("\nDealer's final hand: ", look_at_hand(hand), spacer)
 
 
-def get_bet(bank):
-    # todo fold checks into place_bet function
+def get_bet(player):
     while True:  # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
-        entered_bet = input("Place your bet, max " + str(bank) + ":  (Press Q to quit)")
-        if entered_bet in ("q", "Q"):
+        entered_bet = input("Place your bet, max " + str(player.bank) + ":  (Press Q to quit)")
+        if entered_bet in ("q", "Q"):  # Allows quitting while entering bet
             quit(0)
-        try:
-            bet = int(entered_bet)
-            if bet <= 0:
-                raise ValueError
-        except ValueError:
-            print("Invalid bet. Bet must be a number between 1 and" + str(bank) + "!")
-            continue
-        if bet > bank:
-            print("Can't bet more than you have!")
-            continue
         else:
-            break
-    return bet
+            if not player.place_bet(entered_bet):
+                continue
+            else:
+                break
 
 
 def get_action(player, hand):
+    # todo: Separate this into gui-friendly actions
     # This is retrieving an action from the player (text only).
     possible_actions = ["stand", "hit"]
-    if not hand.check_actions("double") and player.double_check():
+    if not hand.check_actions("double") and player.place_bet(player.bet, True):
         possible_actions.append("double")
     if not hand.check_actions("split") and hand.name == 1 and hand.pair:
         possible_actions.append("split")
@@ -324,4 +323,4 @@ def get_action(player, hand):
 
 
 if __name__ == '__main__':
-    play_game()
+    play_game("Bob", 2)
