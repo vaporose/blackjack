@@ -8,16 +8,17 @@ class Game:
 
     def __init__(self, playername, decks):
         # Below line is used primarily for results output, but can be expanded later for saving games.
-        self.currentround = 1   # Starting off the game in round 1.
+        self.currentround = 1
         self.player = Player(playername)
         self.dealer = Player("Dealer")
         self.deck = Deck(decks)  # Initializes the decks, taking 'decks' as the number of decks to use.
         self.allplayers = [self.dealer, self.player]  # Sets up a list of players to be able to iterate through them.
-        self.over = False  # Sets whether or not the game is over.
+        self.over = False  # Game is over when the player is out of money.
 
     def new_round(self):
         # In a real game the deck wouldn't be shuffled every round. However, introducing shuffling only occasionally
         # introduces more complexity than will be noticeable in the game.
+        self.currentround += 1
         self.deck.shuffle()
         for player in self.allplayers:
             player.hands.append(Hand())  # Instantiates a new hand for both the player and dealer and gives them cards
@@ -65,12 +66,24 @@ class Game:
             result = player.check_winner(self.dealer.hands[0])
             win_messages.append(win_values[result])
             if result == 1:
-                player.bank += player.bet  # TODO: Update this when player.place_bet updated
+                player.bank += player.bet * 2
         return win_messages
 
     def end_round(self):
-        pass
+        # End round cleanup
+        # todo: Create logging function to record gameplay
+        for player in self.allplayers:
+            for hand in player.hands:
+                self.deck.shoe.extend(hand.cards)
+                del hand
+            player.hands.clear()
+            player.bet = 0
+        if self.player.bank <= 0:
+            self.game_over()
 
+    def game_over(self):
+        # todo: Extend with end of game logging
+        self.over = True
 
 class Player:
 
@@ -82,7 +95,8 @@ class Player:
         self.hand_held = 0  # This is used to determine which hand the player is looking at, after splitting
 
     def place_bet(self, player_bet):
-        self.bet = player_bet  # Todo: Fix this to remove from bank and combine with double_check
+        self.bet = player_bet
+        self.bank -= player_bet
 
     def __str__(self):
         return self.name
@@ -178,6 +192,7 @@ class Deck:
 
     def __init__(self, num_decks):
         self.cards = []
+        self.shoe = []  # Cards that have already been played.
         for deck in range(num_decks):  # For the number of decks specified, add all the cards.
             self.cards += (Card(rank, suit) for rank in range(1, 14) for suit in 'chsd')
             # chsd = list for suits (clubs, hearts, spades, diamonds).
@@ -187,6 +202,10 @@ class Deck:
         shuffle(self.cards)
 
     def deal_card(self):
+        if not len(self.cards):  # If the deck doesn't have enough cards left, then reshuffle
+            self.cards.extend(self.shoe)
+            self.shuffle()
+            self.shoe.clear()
         newcard = self.cards[-1]
         self.cards.pop()
         return newcard
@@ -224,10 +243,12 @@ def play_game():
         play_hands(game, game.player)
         dealer_actions(game, game.dealer, dealer)
         print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", game.player.bank)
-        if input("Press Y to continue or anything else to quit.") in ("y","Y"):
-            continue
-        else:
+        if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
             quit(0)
+        game.end_round()
+        if game.over:
+            break
+    print("You're out of money -- game over! You lasted " + str(game.currentround - 1) + " rounds.")
 
 
 def play_hands(game, player):
@@ -258,13 +279,17 @@ def dealer_actions(game, player, hand):
 
 
 def get_bet(bank):
+    # todo fold checks into place_bet function
     while True:  # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
         entered_bet = input("Place your bet, max " + str(bank) + ":  (Press Q to quit)")
-        quit_game(entered_bet)  # Did they press q / Q? Then quit.
+        if entered_bet in ("q", "Q"):
+            quit(0)
         try:
             bet = int(entered_bet)
+            if bet <= 0:
+                raise ValueError
         except ValueError:
-            print("Bet must be a number!")
+            print("Invalid bet. Bet must be a number between 1 and" + str(bank) + "!")
             continue
         if bet > bank:
             print("Can't bet more than you have!")
@@ -279,7 +304,7 @@ def get_action(player, hand):
     possible_actions = ["stand", "hit"]
     if not hand.check_actions("double") and player.double_check():
         possible_actions.append("double")
-    if not hand.check_actions("split") and hand.name == 1:  # Todo: Re-implement "and hand.pair:"
+    if not hand.check_actions("split") and hand.name == 1 and hand.pair:
         possible_actions.append("split")
     print("You are holding hand " + str(hand.name) + ". Choose an action or press 'S' to switch hands, 'Q' to quit.\n")
     for option in possible_actions:
@@ -287,20 +312,15 @@ def get_action(player, hand):
     action = None
     try:
         selected_action = input("\nEnter 0-" + str(len(possible_actions)-1) + ": ")
-        quit_game(selected_action)
-        if selected_action == 'S' or selected_action == 's':
+        if selected_action in ("q", "Q"):
+            quit(0)
+        elif selected_action in ("s", "S"):
             return "switch"
         action = possible_actions[int(selected_action)]
     except IndexError:
         print("Not an option. Please try again.")
     hand.actions_taken.append(action)
     return action
-
-
-def quit_game(got_key):
-    # Quit function. This will probably be removed once we go to a GUI.
-    if got_key == "q" or got_key == "Q":
-        quit(0)
 
 
 if __name__ == '__main__':
