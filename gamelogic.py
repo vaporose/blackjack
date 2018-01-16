@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
 
 from random import shuffle
@@ -21,37 +21,17 @@ class Game:
         self.currentround += 1
         self.deck.shuffle()
         for player in self.allplayers:
-            player.hands.append(Hand())  # Instantiates a new hand for both the player and dealer and gives them cards
+            player.hands.append(Hand(player, self.deck))
+            # Instantiates a new hand for both the player and dealer and gives them cards
             for x in range(2):
                 newcard = self.deck.deal_card()
                 player.hands[0].cards.append(newcard)
                 if x == 1:
                     player.hands[0].calculate_value()
 
-    def player_actions(self, hand, action="stand"):
-        if action == "hit" or action == "double":
-            hand.cards.append(self.deck.deal_card())
-            hand.calculate_value()
-            if hand.bust:
-                hand.actions_taken.append("stand")
-        if action == "double":
-            hand.actions_taken.append(action)
-            self.player.bet += self.player.bet*2
-        if action == "split":
-            # Giving a new hand, splitting the cards from the old hand and dealing a new card to each
-            self.player.hands.append(Hand(2))
-            self.player.hands[1].cards.append(hand.cards[-1])
-            hand.cards.pop(-1)
-            for hands in self.player.hands:
-                hands.cards.append(self.deck.deal_card())
-                hands.calculate_value()
-            hand.actions_taken.append(action)
-        if action == "stand":
-            hand.actions_taken.append(action)
-
     def player_done(self):
         # Check if each hand is stood
-        if all(hand.check_actions("stand") for hand in self.player.hands):
+        if all(len(hand.actions) < 1 for hand in self.player.hands):
             return True
         else:
             return False
@@ -101,14 +81,14 @@ class Player:
             if bet <= 0 or bet > self.bank:
                 raise ValueError
         except ValueError:
-            print("ERROR: Invalid bet: ", player_bet, "Bet must be a number between 1 and" + str(self.bank))
+            print("ERROR: Invalid bet: ", player_bet, "Bet must be a number between 1 and " + str(self.bank))
             return False
         except TypeError:
             print("ERROR: Invalid bet:", player_bet, "Bet must be an integer.")
             return False
         else:
             if not validate:
-                self.bet = bet
+                self.bet += bet
                 self.bank -= bet
                 return True
             else:
@@ -146,37 +126,57 @@ class Hand:
     """This holds values of the current cards. This will be deleted once a round is wrapped up and instantiated again
     when the round begins."""
 
-    def __init__(self, name=1):
+    def __init__(self, owner, deck, name=1):
         self.name = name  # The "name" is hand 1 or 2. Probably a clunky way to use this.
         self.cards = []  # This holds Card objects
         self.value = 0
-        self.bust = False  # Makes the hand bust if its value is over 21
-        self.pair = False  # A "pair" are two cards of the same value (gotten from calculate_value)
+        self.bust = False  # Makes the hand bust if its value is over 21. Currently not in use.
         self.blackjack = False
-        self.actions_taken = []  # The once-only actions the hand has taken this round (double, hit, stand).
+        self.owner = owner
+        self.deck = deck
+        self.actions = [self.hit] if self.owner.name == "Dealer" else self.check_actions()
 
     def calculate_value(self):
+        # todo: See if "self.value" works as a function
         self.value = sum([cards.value for cards in self.cards])
         if any(cards.rank == 1 for cards in self.cards) and self.value + 10 <= 21:
-            self.value += 10  # If hand.value would be less than 21, makes aces worth 11 instead of 1.
+            self.value += 10  # If the hand value won't go bust, make Aces worth 11
         if self.value > 21:
-            self.bust = True
+            self.stand()
         if len(self.cards) == 2:
             if any(cards.value == 10 for cards in self.cards) and any(cards.rank == 1 for cards in self.cards):
-                self.blackjack = True
-            if self.cards[0].value == self.cards[1].value:
-                self.pair = True
+                self.blackjack = True  # This is currently not being used for anything, but may in the future
         return self.value
 
-    def check_actions(self, action=None):
-        # Returns the length of actions_taken if no action is passed to it.
-        if not action:
-            return len(self.actions_taken)
-        else:  # Determines if the action specified has already been taken
-            if action in self.actions_taken:
-                return True
-            else:
-                return False
+    def stand(self):
+        self.actions.clear()
+
+    def hit(self):
+        self.cards.append(self.deck.deal_card())
+        self.calculate_value()
+
+    def double(self):
+        self.owner.place_bet(self.owner.bet)
+        self.hit()
+        del self.actions["double"]
+
+    def split(self):
+        # Giving a new hand, splitting the cards from the old hand and dealing a new card to each
+        self.owner.hands.append(Hand(self.owner, self.deck, 2))
+        self.owner.hands[1].cards.append(self.cards[-1])
+        self.cards.pop(-1)
+        for hands in self.owner.hands:
+            hands.cards.append(self.deck.deal_card())
+            hands.calculate_value()
+        del self.actions["split"]
+
+    def check_actions(self):
+        actions = {"stand": self.stand, "hit": self.hit}
+        if self.owner.place_bet(self.owner.bet, True):
+            actions.update({"double": self.double})
+        if len(self.cards) == 2 and self.cards[0].value == self.cards[1].value:
+            actions.update({"split": self.split})
+        return actions
 
     def __repr__(self):
         return self.__str__()
@@ -239,12 +239,12 @@ def play_game(playername, decks):
 
 
 def play_round(game, player, dealer):
+    get_bet(player)
     game.new_round()
     print("*"*10 + "\nRound ", game.currentround)  # Printing the round beginning.
-    get_bet(player)
     print("\nDealer has the", dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
     play_hands(game, player)
-    dealer_actions(game, dealer.hands[0])
+    dealer_actions(dealer.hands[0])
     print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", player.bank)
     if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
         quit(0)
@@ -259,19 +259,14 @@ def play_hands(game, player):
     # Until you Stand or go bust (see player_actions), you will be prompted to take action.
     current_hand = player.hands[player.hand_held]  # Simplifying accessing the current hand as an object and not int
     print(look_at_hand(current_hand), "\n")
-    action = get_action(player, current_hand)  # Gets from the player what they want to do with the held hand
-    if action == "switch":  # Allows player to switch hands, assuming they have previously split hands.
-        player.switch_hands()
-        print(look_at_hand(current_hand), "\n")
-    else:
-        game.player_actions(current_hand, action)  # Does the specified action, if it wasn't "switch" or quit.
-        print(look_at_hand(current_hand), "\n")
-    if current_hand.check_actions("stand"):  # If they stood, then the hand is maybe over...
+    get_action(current_hand)  # Gets from the player what they want to do with the held hand
+    print(look_at_hand(current_hand), "\n")
+    if not len(current_hand.actions):  # If they stood, then the hand is maybe over...
         if not game.player_done():  # ... unless not ALL hands have been stood. In which case, switch to other hand.
             player.switch_hands()
         else:
             return  # If they're all done, then exit this function.
-    play_hands(game, player)  # If we haven't stood yet, then continue prompting for action on this hand.
+    play_hands(game, player)  # If we haven't stood yet, then continue prompting for action on this hand."""
 
 
 def look_at_hand(hand):
@@ -280,50 +275,46 @@ def look_at_hand(hand):
     return hand_value + "\n".join(map(str, hand.cards[:]))
 
 
-def dealer_actions(game, hand):
+def dealer_actions(hand):
     spacer = "\n" + "*"*30 + "\n"
     print(spacer + "Dealer reveals:\n", look_at_hand(hand))
-    while hand.value < 16:
-        game.player_actions(hand, "hit")
+    while hand.value < 17:
+        hand.actions["hit"]()
     print("\nDealer's final hand: ", look_at_hand(hand), spacer)
 
 
 def get_bet(player):
-    while True:  # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
-        entered_bet = input("Place your bet, max " + str(player.bank) + ":  (Press Q to quit)")
-        if entered_bet in ("q", "Q"):  # Allows quitting while entering bet
-            quit(0)
+    # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
+    entered_bet = input("Place your bet, max " + str(player.bank) + ":  (Press Q to quit)")
+    if entered_bet in ("q", "Q"):  # Allows quitting while entering bet
+        quit(0)
+    else:
+        if not player.place_bet(entered_bet):
+            get_bet(player)
         else:
-            if not player.place_bet(entered_bet):
-                continue
-            else:
-                break
+            return
 
 
-def get_action(player, hand):
-    # todo: Separate this into gui-friendly actions
-    # This is retrieving an action from the player (text only).
-    possible_actions = ["stand", "hit"]
-    if not hand.check_actions("double") and player.place_bet(player.bet, True):
-        possible_actions.append("double")
-    if not hand.check_actions("split") and hand.name == 1 and hand.pair:
-        possible_actions.append("split")
-    print("You are holding hand " + str(hand.name) + ". Choose an action or press 'S' to switch hands, 'Q' to quit.\n")
-    for option in possible_actions:
-        print(possible_actions.index(option), ")", option.title())
-    action = None
+def get_action(hand):
+    possible_actions = [option for option in hand.actions]
+    print("You are holding hand " + str(hand.name) + ". Choose an action:\n")
+    for a in possible_actions:
+        print(str(possible_actions.index(a)) + ":", a.title())
+    switch = ", S to switch hands)" if len(hand.owner.hands) > 1 else ")"
+    print("\n (press Q to quit" + switch + "\n")
     try:
-        selected_action = input("\nEnter 0-" + str(len(possible_actions)-1) + ": ")
+        selected_action = input("Enter 0-" + str(len(possible_actions) - 1) + ": ")
         if selected_action in ("q", "Q"):
             quit(0)
         elif selected_action in ("s", "S"):
-            return "switch"
+            hand.owner.switch_hands()
+            return
         action = possible_actions[int(selected_action)]
     except IndexError:
         print("Not an option. Please try again.")
-    hand.actions_taken.append(action)
-    return action
+    else:
+        hand.actions[action]()
 
 
 if __name__ == '__main__':
-    play_game("Bob", 2)
+    play_game("Bob", 1)
