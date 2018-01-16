@@ -8,7 +8,7 @@ class Game:
 
     def __init__(self, playername, decks):
         # Below line is used primarily for results output, but can be expanded later for saving games.
-        self.currentround = 1
+        self.currentround = 0
         self.player = Player(playername)
         self.dealer = Player("Dealer")
         self.deck = Deck(decks)  # Initializes the decks, taking 'decks' as the number of decks to use.
@@ -233,23 +233,26 @@ class Card:
 
 def play_game(playername, decks):
     """This function should only be run when playing this from the command line."""
-    # TODO: Replace game with variables once out oftesting and ready for command line release
     game = Game(playername, decks)
-    while True:
-        print("Round ", game.currentround)  # Printing the round beginning.
-        game.new_round()
-        dealer = game.dealer.hands[0]  # Simplify dealer's hand for readability
-        get_bet(game.player)
-        print("\nDealer has the", dealer.cards[1], "showing.")  # Prints the dealer's face-up card
-        play_hands(game, game.player)
-        dealer_actions(game, dealer)
-        print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", game.player.bank)
-        if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
-            quit(0)
-        game.end_round()
-        if game.over:
-            break
+    play_round(game, game.player, game.dealer)
     print("You're out of money -- game over! You lasted " + str(game.currentround - 1) + " rounds.")
+
+
+def play_round(game, player, dealer):
+    game.new_round()
+    print("*"*10 + "\nRound ", game.currentround)  # Printing the round beginning.
+    get_bet(player)
+    print("\nDealer has the", dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
+    play_hands(game, player)
+    dealer_actions(game, dealer.hands[0])
+    print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", player.bank)
+    if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
+        quit(0)
+    game.end_round()
+    if game.over:
+        return
+    else:
+        play_round(game, player, dealer)
 
 
 def play_hands(game, player):
