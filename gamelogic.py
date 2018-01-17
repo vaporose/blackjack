@@ -26,8 +26,6 @@ class Game:
             for x in range(2):
                 newcard = self.deck.deal_card()
                 player.hands[0].cards.append(newcard)
-                if x == 1:
-                    player.hands[0].calculate_value()
 
     def player_done(self):
         # Check if each hand is stood
@@ -129,31 +127,51 @@ class Hand:
     def __init__(self, owner, deck, name=1):
         self.name = name  # The "name" is hand 1 or 2. Probably a clunky way to use this.
         self.cards = []  # This holds Card objects
-        self.value = 0
         self.bust = False  # Makes the hand bust if its value is over 21. Currently not in use.
-        self.blackjack = False
         self.owner = owner
         self.deck = deck
         self.actions = [self.hit] if self.owner.name == "Dealer" else self.check_actions()
 
-    def calculate_value(self):
+    # Hand properties
+    @property
+    def value(self):
         # todo: See if "self.value" works as a function
-        self.value = sum([cards.value for cards in self.cards])
-        if any(cards.rank == 1 for cards in self.cards) and self.value + 10 <= 21:
-            self.value += 10  # If the hand value won't go bust, make Aces worth 11
-        if self.value > 21:
+        value = sum(cards.value for cards in self.cards)
+        if any(cards.rank == 1 for cards in self.cards) and value + 10 <= 21:
+            value += 10  # If the hand value won't go bust, make Aces worth 11
+        if value > 21:
             self.stand()
+        return value
+
+    @property
+    def blackjack(self):
+        # This is currently not being used for anything, but may in the future
+        # todo: See if this will ever be needed; if yes, see if it's possible to simplify this
         if len(self.cards) == 2:
             if any(cards.value == 10 for cards in self.cards) and any(cards.rank == 1 for cards in self.cards):
-                self.blackjack = True  # This is currently not being used for anything, but may in the future
-        return self.value
+                return True
+            else:
+                return False
+        else:
+            return False
+
+    # Other hand functions
+
+    def check_actions(self):
+        actions = {"stand": self.stand, "hit": self.hit}
+        if self.owner.place_bet(self.owner.bet, True):
+            actions.update({"double": self.double})
+        if len(self.cards) == 2 and self.cards[0].value == self.cards[1].value:
+            actions.update({"split": self.split})
+        return actions
+
+    # Hand actions
 
     def stand(self):
         self.actions.clear()
 
     def hit(self):
         self.cards.append(self.deck.deal_card())
-        self.calculate_value()
 
     def double(self):
         self.owner.place_bet(self.owner.bet)
@@ -167,16 +185,9 @@ class Hand:
         self.cards.pop(-1)
         for hands in self.owner.hands:
             hands.cards.append(self.deck.deal_card())
-            hands.calculate_value()
         del self.actions["split"]
 
-    def check_actions(self):
-        actions = {"stand": self.stand, "hit": self.hit}
-        if self.owner.place_bet(self.owner.bet, True):
-            actions.update({"double": self.double})
-        if len(self.cards) == 2 and self.cards[0].value == self.cards[1].value:
-            actions.update({"split": self.split})
-        return actions
+    # Hand reprint values
 
     def __repr__(self):
         return self.__str__()
