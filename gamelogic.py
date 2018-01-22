@@ -9,10 +9,8 @@ class Game:
     def __init__(self, playername, decks):
         # Below line is used primarily for results output, but can be expanded later for saving games.
         self.currentround = 0
-        self.player = Player(playername)
-        self.dealer = Player("Dealer")
         self.deck = Deck(decks)  # Initializes the decks, taking 'decks' as the number of decks to use.
-        self.allplayers = [self.dealer, self.player]  # Sets up a list of players to be able to iterate through them.
+        self.players = [Player("Dealer"), Player(playername)]
         self.over = False  # Game is over when the player is out of money.
 
     def new_round(self):
@@ -20,7 +18,7 @@ class Game:
         # introduces more complexity than will be noticeable in the game.
         self.currentround += 1
         self.deck.shuffle()
-        for player in self.allplayers:
+        for player in self.players:
             player.hands.append(Hand(player, self.deck))
             # Instantiates a new hand for both the player and dealer and gives them cards
             for x in range(2):
@@ -28,7 +26,7 @@ class Game:
 
     def player_done(self):
         # Check if each hand is stood
-        if all(len(hand.actions) < 1 for hand in self.player.hands):
+        if all(len(hand.actions) < 1 for hand in self.players[1].hands):
             return True
         else:
             return False
@@ -39,8 +37,8 @@ class Game:
         win_values = {0: "lose", 1: "win", 2: "push"}
         win_messages = []
         # Check if the player has won or not
-        for player in self.allplayers[1:]:
-            result = player.check_winner(self.dealer.hands[0])
+        for player in self.players[1:]:
+            result = player.check_winner(self.players[0].hands[0])
             win_messages.append(win_values[result])
             if result == 1:
                 player.bank += player.bet * 2
@@ -49,13 +47,13 @@ class Game:
     def end_round(self):
         # End round cleanup
         # todo: Create logging function to record gameplay
-        for player in self.allplayers:
+        for player in self.players:
             for hand in player.hands:
                 self.deck.shoe.extend(hand.cards)
                 del hand
             player.hands.clear()
             player.bet = 0
-        if self.player.bank <= 0:
+        if self.players[1].bank <= 0:
             self.game_over()
 
     def game_over(self):
@@ -131,37 +129,12 @@ class Hand:
     def __init__(self, owner, deck, name=1):
         self.name = name  # The "name" is hand 1 or 2. Probably a clunky way to use this.
         self.cards = []  # This holds Card objects
-        self.bust = False  # Makes the hand bust if its value is over 21. Currently not in use.
         self.owner = owner
         self.deck = deck
         self.value = 0
         self.actions = [self.hit] if self.owner.name == "Dealer" else self.check_actions()
 
-    """
-    # Hand properties
-    @property
-    def value(self):
-        # todo: See if "self.value" works as a function
-        value = sum(cards.value for cards in self.cards)
-        if any(cards.rank == 1 for cards in self.cards) and value + 10 <= 21:
-            value += 10  # If the hand value won't go bust, make Aces worth 11
-        if value > 21:
-            self.stand()
-        return value"""
-
-    @property
-    def blackjack(self):
-        # This is currently not being used for anything, but may in the future
-        # todo: See if this will ever be needed; if yes, see if it's possible to simplify this
-        if len(self.cards) == 2:
-            if any(cards.value == 10 for cards in self.cards) and any(cards.rank == 1 for cards in self.cards):
-                return True
-            else:
-                return False
-        else:
-            return False
-
-    # Other hand functions
+    # General hand functions
 
     def check_actions(self):
         actions = {"stand": self.stand, "hit": self.hit}
@@ -261,7 +234,7 @@ class Card:
 def play_game(playername, decks):
     """This function should only be run when playing this from the command line."""
     game = Game(playername, decks)
-    play_round(game, game.player, game.dealer)
+    play_round(game, game.players[1], game.players[0])
     print("You're out of money -- game over! You lasted " + str(game.currentround - 1) + " rounds.")
 
 
