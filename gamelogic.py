@@ -5,10 +5,11 @@ from random import shuffle
 
 
 class Game:
+    """Game object supplies logic for when the game is done, what happens when round begins and ends, and owns the Deck
+    and Players instance objects"""
 
     def __init__(self, playername, decks):
-        # Below line is used primarily for results output, but can be expanded later for saving games.
-        self.currentround = 0
+        self.currentround = 0  # Used primarily
         self.deck = Deck(decks)  # Initializes the decks, taking 'decks' as the number of decks to use.
         self.players = [Player("Dealer"), Player(playername)]
         self.over = False  # Game is over when the player is out of money.
@@ -25,15 +26,21 @@ class Game:
                 player.hands[0].hit()
 
     def player_done(self):
-        # Check if each hand is stood
+        """
+        Check if each hand is stood
+        :return: True if all hands are stood; False if not.
+        """
         if all(len(hand.actions) < 1 for hand in self.players[1].hands):
             return True
         else:
             return False
 
     def check_winner(self):
-        # This goes through all players except the dealer to see if they win.
-        # Doing it this way to render this expandable for multiple players, even though only one is implemented so far.
+        """
+        This goes through all players except the dealer to see if they win.
+        Doing it this way to render this expandable for multiple players, even though only one is implemented so far.
+        :return: The messages on win_values (local variable).
+        """
         win_values = {0: "lose", 1: "win", 2: "push"}
         win_messages = []
         # Check if the player has won or not
@@ -45,23 +52,29 @@ class Game:
         return win_messages
 
     def end_round(self):
-        # End round cleanup
         # todo: Create logging function to record gameplay
+        """
+        Performs end-round cleanup by removing cards in players' hands and adding them to the deck Shoe
+        """
         for player in self.players:
             for hand in player.hands:
                 self.deck.shoe.extend(hand.cards)
                 del hand
             player.hands.clear()
             player.bet = 0
-        if self.players[1].bank <= 0:
+        if self.players[1].bank <= 0:  # If the player doesn't have any money left, games is over.
             self.game_over()
 
     def game_over(self):
         # todo: Extend with end of game logging
+        """
+        Sets what occurs when the game is determined to be over.
+        """
         self.over = True
 
 
 class Player:
+    """Represents one player. In this text-only version of the game, only one player is possible."""
 
     def __init__(self, name, bank=50):
         self.name = name
@@ -71,6 +84,12 @@ class Player:
         self.hand_held = 0  # This is used to determine which hand the player is looking at, after splitting
 
     def place_bet(self, player_bet, validate=False):
+        """
+        Determines if a bet is validate, and places it if "Validate" is not set to False.
+        :param player_bet: Variable
+        :param validate: If set to True, this method will only check if a bet can be made, and not place the bet.
+        :return: True if bet is valid, False if bet is not valid (including type errors)
+        """
         try:
             bet = int(player_bet)
             if bet <= 0 or bet > self.bank:
@@ -82,24 +101,35 @@ class Player:
             print("ERROR: Invalid bet:", player_bet, "Bet must be an integer.")
             return False
         else:
-            if not validate:
+            if not validate:  # If we're not just checking to see if the bet is good, then go ahead and change things.
                 self.bet += bet
                 self.bank -= bet
                 return True
             else:
                 return True
 
-    def switch_hands(self):  # Pick up a different hand (when hands are split)
-        if self.hand_held == 0:
-            self.hand_held = 1
+    def switch_hands(self, hand=None):
+        """
+        Pick up a different hand (when hands are split)
+        :param hand:  Compatibility for more than 2 hands. Hand should be the self.hands index of the new hand.
+        """
+        if not hand:
+            if self.hand_held == 0:
+                self.hand_held = 1
+            else:
+                self.hand_held = 0
         else:
-            self.hand_held = 0
+            self.hand_held = hand
 
     def check_winner(self, dealer):
-        # Takes the dealer's hand as input
-        # 0 == Loss
-        # 1 == Win
-        # 2 == Push (loss, but used separately for recording/printing values).
+        """
+        Checks the hand for win conditions and returns what it finds based on below:
+        0 == Loss
+        1 == Win
+        2 == Push (loss, but used separately for recording/printing values).
+        :param dealer: Instance of the dealer's hand.
+        :return:
+        """
         winning_hand = None
         for hand in self.hands:
             if not hand.bust and hand.value == max(hands.value for hands in self.hands):
@@ -137,9 +167,13 @@ class Hand:
     # General hand functions
 
     def check_actions(self):
+        """
+        Evaluates the actions the player can perform.
+        :return: Returns a list of actions (methods in hand) that can be done.
+        """
         actions = {"stand": self.stand, "hit": self.hit}
         if self.value > 21:
-            self.stand()
+            self.stand()  # If the player is bust, go to Stand straight away
         if self.owner.place_bet(self.owner.bet, True):
             actions.update({"double": self.double})
         if len(self.cards) == 2 and self.cards[0].value == self.cards[1].value:
@@ -149,30 +183,43 @@ class Hand:
     # Hand actions
 
     def stand(self):
+        # todo: In UI version, make sure to retain check to determine if self.actions is empty for end of round.
+        """
+        Removing all actions available.
+        """
         self.actions.clear()
 
     def hit(self):
+        """
+        Gets a card from the deck (necessitating the self.deck value), and adds it to self.cards. Also adds the card's
+        value to self.value.
+        """
         card = self.deck.deal_card()
         self.value += card.value
         if card.value == 1 and self.value + 10 <= 21:  # todo: Remove check on UI version, this should be its own funct.
             self.value += 10
         self.cards.append(card)
-        if self.value > 21:  # todo: Remove on ui version
+        if self.value > 21:  # todo: Remove on ui version?
             self.stand()
 
     def double(self):
+        """
+        Places a bet and get a card. This is validated separately in the place_bet method.
+        """
         self.owner.place_bet(self.owner.bet)
-        self.hit()
         del self.actions["double"]
+        self.hit()
 
     def split(self):
-        # Giving a new hand, splitting the cards from the old hand and dealing a new card to each
+        """
+        Giving a new hand, splitting the cards from the old hand and dealing a new card to each
+        """
         self.owner.hands.append(Hand(self.owner, self.deck, 2))
         self.owner.hands[1].cards.append(self.cards[-1])
         self.cards.pop(-1)
-        for hands in self.owner.hands:
-            hands.cards.append(self.deck.deal_card())
         del self.actions["split"]
+        for hands in self.owner.hands:
+            hands.hit()
 
     # Hand reprint values
 
@@ -195,10 +242,17 @@ class Deck:
             # chsd = list for suits (clubs, hearts, spades, diamonds).
 
     def shuffle(self):
-        #  Shuffles the deck. This is called in Game.new_round
+        """
+        Shuffles the deck. This is called in Game.new_round
+        """
         shuffle(self.cards)
 
     def deal_card(self):
+        """
+        This takes the top card off the deck and returns it. It also will check if the deck is empty, and reshuffle it
+        based on the cards in self.shoe
+        :return: A card object
+        """
         if not len(self.cards):  # If the deck doesn't have enough cards left, then reshuffle
             self.cards.extend(self.shoe)  # Add the contents of the shoe back to the deck
             self.shuffle()
@@ -209,6 +263,7 @@ class Deck:
 
 
 class Card:
+    """Card objects contain its rank and suit but do nothing on their own."""
     suits = {'c': 'Clubs', 'h': 'Hearts', 's': 'Spades', 'd': 'Diamonds'}
     ranks = {1: 'Ace', 2: 'Two', 3: 'Three', 4: 'Four', 5: 'Five', 6: 'Six', 7: 'Seven', 8: 'Eight', 9: 'Nine',
              10: 'Ten', 11: 'Jack', 12: 'Queen', 13: 'King'}
@@ -221,11 +276,17 @@ class Card:
     # Card reprints
 
     def __repr__(self):
+        """
+        Insures that when printing a card, the card is printed as a string and not an object reference. See __str__
+        :return: self.__str__()
+        """
         return self.__str__()
-        # Insures that when printing a card, the card is printed as a string and not an object reference. See __str__
 
     def __str__(self):
-        # Whenever this object is printed, print the card name.
+        """
+        Whenever this object is printed, print the card name.
+        :return: The card rank and suit in readable english
+        """
         return "%s of %s" % (Card.ranks[self.rank], Card.suits[self.suit])
 
 # Text-only functions (will not work with GUI)
@@ -239,6 +300,13 @@ def play_game(playername, decks):
 
 
 def play_round(game, player, dealer):
+    """
+    A single round in the text version.
+    :param game: Instance of the Game object. Required.
+    :param player: Instance of a Player object. Required.
+    :param dealer: Instance of a specific Player with the name attribute "Dealer". Required.
+    :return: Exits the function when game over criteria are satisfied
+    """
     get_bet(player)
     game.new_round()
     print("*"*10 + "\nRound ", game.currentround)  # Printing the round beginning.
@@ -256,7 +324,12 @@ def play_round(game, player, dealer):
 
 
 def play_hands(game, player):
-    # Until you Stand or go bust (see player_actions), you will be prompted to take action.
+    """
+    Prompting for player action. Until you Stand or go bust (see player_actions), you will be prompted to take action.
+    :param game: Instance of Game object. Required.
+    :param player: Instance of Player object. Required.
+    :return: Exits the function when no actions are left.
+    """
     current_hand = player.hands[player.hand_held]  # Simplifying accessing the current hand as an object and not int
     print(look_at_hand(current_hand), "\n")
     get_action(current_hand)  # Gets from the player what they want to do with the held hand
@@ -269,12 +342,21 @@ def play_hands(game, player):
 
 
 def look_at_hand(hand):
+    """
+    Prints a list of cards in the player's hand.
+    :param hand: Instance of a specific hand (player-only)
+    :return: Newline-spaced list of cards, and the hand value.
+    """
     hand_value = "\nValue: " + str(hand.value) + "\n"
     return hand_value + "\n".join(map(str, hand.cards[:]))
 
 
 def dealer_actions(hand):
-    spacer = "\n" + "*"*30 + "\n"
+    """
+    Dealer's action. They will only ever hit, or stand.
+    :param hand: Instance of the Dealer (player object)'s hand Hand.
+    """
+    spacer = "\n" + "*"*30 + "\n"  # Makes the printing pretty.
     print(spacer + "Dealer reveals:\n", look_at_hand(hand))
     while hand.value < 17:
         hand.actions[0]()
@@ -282,7 +364,11 @@ def dealer_actions(hand):
 
 
 def get_bet(player):
-    # Getting the player's bet. This will only accept numbers, and not more than the player's bank.
+    """
+    Getting the player's bet. This will only accept numbers, and not more than the player's bank.
+    :param player: Instance of Player class.
+    :return: Exits the function when the bet is retrieved and placed successfully.
+    """
     entered_bet = input("Place your bet, max " + str(player.bank) + ":  (Press Q to quit)")
     if entered_bet in ("q", "Q"):  # Allows quitting while entering bet
         quit(0)
@@ -294,6 +380,11 @@ def get_bet(player):
 
 
 def get_action(hand):
+    """
+    Retrieves available actions for the specified hand, invoking hand.actions
+    :param hand: Instance of a specific Hand object. Required.
+    :return: Return only when player switches hands. Otherwise, exit from function will occur when the action is done.
+    """
     possible_actions = [option for option in hand.actions]
     print("You are holding hand " + str(hand.name) + ". Choose an action:\n")
     for a in possible_actions:
