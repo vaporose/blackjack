@@ -24,8 +24,7 @@ class Game:
             player.hands.append(Hand(player, self.deck))
             # Instantiates a new hand for both the player and dealer and gives them cards
             for x in range(2):
-                newcard = self.deck.deal_card()
-                player.hands[0].cards.append(newcard)
+                player.hands[0].hit()
 
     def player_done(self):
         # Check if each hand is stood
@@ -92,9 +91,6 @@ class Player:
             else:
                 return True
 
-    def __str__(self):
-        return self.name
-
     def switch_hands(self):  # Pick up a different hand (when hands are split)
         if self.hand_held == 0:
             self.hand_held = 1
@@ -119,6 +115,14 @@ class Player:
         else:
             return 0  # All other permutations result in the player losing their bet and not pushing.
 
+    # Player reprints
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return self.name
+
 
 class Hand:
     """This holds values of the current cards. This will be deleted once a round is wrapped up and instantiated again
@@ -130,8 +134,10 @@ class Hand:
         self.bust = False  # Makes the hand bust if its value is over 21. Currently not in use.
         self.owner = owner
         self.deck = deck
+        self.value = 0
         self.actions = [self.hit] if self.owner.name == "Dealer" else self.check_actions()
 
+    """
     # Hand properties
     @property
     def value(self):
@@ -141,7 +147,7 @@ class Hand:
             value += 10  # If the hand value won't go bust, make Aces worth 11
         if value > 21:
             self.stand()
-        return value
+        return value"""
 
     @property
     def blackjack(self):
@@ -159,6 +165,8 @@ class Hand:
 
     def check_actions(self):
         actions = {"stand": self.stand, "hit": self.hit}
+        if self.value > 21:
+            self.stand()
         if self.owner.place_bet(self.owner.bet, True):
             actions.update({"double": self.double})
         if len(self.cards) == 2 and self.cards[0].value == self.cards[1].value:
@@ -171,7 +179,13 @@ class Hand:
         self.actions.clear()
 
     def hit(self):
-        self.cards.append(self.deck.deal_card())
+        card = self.deck.deal_card()
+        self.value += card.value
+        if card.value == 1 and self.value + 10 <= 21:  # todo: Remove check on UI version, this should be its own funct.
+            self.value += 10
+        self.cards.append(card)
+        if self.value > 21:  # todo: Remove on ui version
+            self.stand()
 
     def double(self):
         self.owner.place_bet(self.owner.bet)
@@ -213,9 +227,9 @@ class Deck:
 
     def deal_card(self):
         if not len(self.cards):  # If the deck doesn't have enough cards left, then reshuffle
-            self.cards.extend(self.shoe)
+            self.cards.extend(self.shoe)  # Add the contents of the shoe back to the deck
             self.shuffle()
-            self.shoe.clear()
+            self.shoe.clear()  # Empty the shoe!
         newcard = self.cards[-1]
         self.cards.pop()
         return newcard
@@ -230,6 +244,8 @@ class Card:
         self.suit = suit
         self.rank = rank
         self.value = rank if rank < 11 else 10  # Setting card value. Face cards (rank 11-13) are worth 10.
+
+    # Card reprints
 
     def __repr__(self):
         return self.__str__()
@@ -271,7 +287,6 @@ def play_hands(game, player):
     current_hand = player.hands[player.hand_held]  # Simplifying accessing the current hand as an object and not int
     print(look_at_hand(current_hand), "\n")
     get_action(current_hand)  # Gets from the player what they want to do with the held hand
-    print(look_at_hand(current_hand), "\n")
     if not len(current_hand.actions):  # If they stood, then the hand is maybe over...
         if not game.player_done():  # ... unless not ALL hands have been stood. In which case, switch to other hand.
             player.switch_hands()
@@ -281,7 +296,6 @@ def play_hands(game, player):
 
 
 def look_at_hand(hand):
-    # Prints the hands for play when running the script; else, returns the cards in hand (for eventual UI)
     hand_value = "\nValue: " + str(hand.value) + "\n"
     return hand_value + "\n".join(map(str, hand.cards[:]))
 
@@ -290,7 +304,7 @@ def dealer_actions(hand):
     spacer = "\n" + "*"*30 + "\n"
     print(spacer + "Dealer reveals:\n", look_at_hand(hand))
     while hand.value < 17:
-        hand.actions["hit"]()
+        hand.actions[0]()
     print("\nDealer's final hand: ", look_at_hand(hand), spacer)
 
 
