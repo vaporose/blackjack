@@ -132,11 +132,11 @@ class Player:
         """
         winning_hand = None
         for hand in self.hands:
-            if not hand.bust and hand.value == max(hands.value for hands in self.hands):
+            if not hand.value > 21 and hand.value == max(hands.value for hands in self.hands):
                 winning_hand = hand
         if not winning_hand:
             return 0  # If winning_hand isn't set, all hands were bust. Therefore, loss.
-        elif dealer.bust or winning_hand.value > dealer.value:
+        elif dealer.value > 21 or winning_hand.value > dealer.value:
             return 1  # If the dealer went bust or if player hand is higher than the dealer's hand, win.
         elif dealer.value == winning_hand.value:
             return 2  # Player pushes if neither went bust and player didn't win
@@ -313,6 +313,9 @@ def play_round(game, player, dealer):
     print("\nDealer has the", dealer.hands[0].cards[1], "showing.")  # Prints the dealer's face-up card
     play_hands(game, player)
     dealer_actions(dealer.hands[0])
+    print("Your final hand(s):\n")
+    for hand in player.hands:
+         print("Hand", hand.name, look_at_hand(hand), "\n")
     print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", player.bank)
     if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
         quit(0)
