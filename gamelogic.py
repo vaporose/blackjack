@@ -315,7 +315,7 @@ def play_round(game, player, dealer):
     dealer_actions(dealer.hands[0])
     print("Your final hand(s):\n")
     for hand in player.hands:
-         print("Hand", hand.name, look_at_hand(hand), "\n")
+        print("Hand", hand.name, look_at_hand(hand), "\n")
     print("You " + " ".join(game.check_winner()) + ".\nNew bank: ", player.bank)
     if input("Press Y to continue or anything else to quit.") not in ("y", "Y"):
         quit(0)
